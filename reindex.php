@@ -1,23 +1,45 @@
 <?php
-	/* Solr Connectivity */
-	define('SOLR_HOST','http://0.0.0.0');			/* Hostname */
-	define('SOLR_PORT','8983');						/* Port */
-	define('SOLR_PATH','/solr/');					/* Default Solr path (usually /solr/) */
-	define('SOLR_CORE','my_core/');					/* Core */
-	define('SOLR_WRITER_TYPE','json');				/* Writer Type - output type.  Currently only 'json' is supported. */
+// 	/* Solr Connectivity */
+// 	define('SOURCE_SOLR_HOST','http://172.16.199.128');			/* Hostname */
+// 	define('SOURCE_SOLR_PORT','8983');						/* Port */
+// 	define('SOURCE_SOLR_PATH','/solr/');					/* Default Solr path (usually /solr/) */
+// 	define('SOURCE_SOLR_CORE','my_core/');					/* Core */
+// 	define('SOURCE_SOLR_VERSION', '3.1');					/* Define Solr version. 3.2 and higher allow more optimized JSON formatting. */
+// 	define('SOURCE_SOLR_WRITER_TYPE','json');				/* Writer Type - output type.  Currently only 'json' is supported. */
 	
-	/* Solr Version Flag */
-	define('SOLR_VERSION', '3.1');					/* Define Solr version.  3.2 and higher allow more optimized JSON formatting. */
+// 	define('TARGET_SOLR_HOST','http://172.16.199.128');		/* Hostname */
+// 	define('TARGET_SOLR_PORT','8983');						/* Port */
+// 	define('TARGET_SOLR_PATH','/solr/');					/* Default Solr path (usually /solr/) */
+// 	define('TARGET_SOLR_CORE','my_core/');					/* Core */
+// 	define('TARGET_SOLR_VERSION', '3.1');					/* Define Solr version. 3.2 and higher allow more optimized JSON formatting. */
+		
+	
+	/* Solr source connectivity */
+	define('SOURCE_SOLR_HOST','http://172.16.98.142');		/* Hostname */
+	define('SOURCE_SOLR_PORT','8080');						/* Port */
+	define('SOURCE_SOLR_PATH','/apache-solr-1.4.1/');		/* Default Solr path (usually /solr/) */
+	define('SOURCE_SOLR_CORE','inrs/');						/* Core */
+	define('SOURCE_SOLR_VERSION', '1.4');					/* Define Solr version.  3.2 and higher allow more optimized JSON formatting. */
+	define('SOURCE_SOLR_WRITER_TYPE','json');				/* Writer Type - output type.  Currently only 'json' is supported. */
+	
+	/* Solr target connectivity */
+	define('TARGET_SOLR_HOST','http://172.16.98.142');		/* Hostname */
+	define('TARGET_SOLR_PORT','8080');						/* Port */
+	define('TARGET_SOLR_PATH','/apache-solr-1.4.1/');		/* Default Solr path (usually /solr/) */
+	define('TARGET_SOLR_CORE','tests/');					/* Core */
+	define('TARGET_SOLR_VERSION', '1.4');
+	
 	
 	/* Performance Options */
-	define('PAGINATE_ROWS',1000);					/* Number of docs to show per page */
-	define('COMMIT_FREQUENCY',10);					/* How many pages to commit after. */
-	define('CURL_TIMEOUT',60);						/* How long until curl request times out.  Set to 0 for unlimited. */
+	define('PAGINATE_ROWS',10);								/* Number of docs to show per page */
+	define('COMMIT_FREQUENCY',10);							/* How many pages to commit after. */
+	define('CURL_TIMEOUT',60);								/* How long until curl request times out.  Set to 0 for unlimited. */
+	define('OPTIMIZE_FINAL',true);							/* Perform an optimize at the end */
 	
 	/* Re-Indexing Options */
-	define('QUERY','*:*');							/* Initial query to use for searching/re-indexing */
-	define('STARTINDEX',0);							/* Index to start searching/re-indexing from */
-	define('ENDINDEX',0);							/* Index to end searching/re-indexing.  Set to 0 for no end index. */
+	define('QUERY','*:*');									/* Initial query to use for searching/re-indexing */
+	define('STARTINDEX',0);									/* Index to start searching/re-indexing from */
+	define('ENDINDEX',0);									/* Index to end searching/re-indexing.  Set to 0 for no end index. */
 	
 	/* Query Parameters for search query */
 	$params = array(
@@ -33,7 +55,8 @@
 			ignore - does not re-post this fields data	
 	*/
 	$ignore_fields = array(
-		
+		'referencetriable' => 'ignore',
+		'titretriable' => 'ignore'
 	);
 		
 	/**********************************************************/
@@ -41,6 +64,56 @@
 	/**********************************************************/
 	
 	class Solr {
+	
+		/**
+	     *  cleanup entity in data
+	     * 
+	     *  @param string $value - data string
+	     *  @return string - the cleaned data
+	     *  @throws none
+	     */
+		public static function remove_entity($value) {
+			$value = html_entity_decode($value, ENT_QUOTES, "UTF-8");
+			$value = htmlspecialchars($value, ENT_QUOTES);
+			return $value;
+		}
+
+		/**
+	     *  function defination to convert array to xml
+	     * 
+	     *  @param array $array - associative array (key/value) 
+	     *  @param $xml - the xml documlent to build
+	     *  @param $parent_key - the parent element name
+	     *  @return array $data - solr data array
+	     *  @throws none
+	     */
+		public static function array_to_xml($array, &$xml, $parent_key='') {
+    		foreach($array as $key => $value) {
+        		if(is_array($value)) {
+            		if(!is_numeric($key)){
+						if ($key=='doc') {
+							$subnode = $xml->addChild("$key");
+							self::array_to_xml($value, $subnode);
+						} else {
+							self::array_to_xml($value, $xml, $key);
+						}
+            		} else {
+                		self::array_to_xml($value, $xml);
+            		}
+        		} else {
+					if(!empty($value)){
+						$value = self::remove_entity($value);
+						if(!is_numeric($key)){
+							$subnode = $xml->addChild("field","$value");
+							$subnode->addAttribute("name", "$key");
+						} else {
+							$subnode = $xml->addChild("field","$value");
+							$subnode->addAttribute("name", "$parent_key");
+						} 
+					}
+				}
+    		}
+		}
 		
 		/**
 	     *  executes a get query on a solr database
@@ -53,10 +126,10 @@
 			$ch = self::init_curl();	/* Initialize curl */
 
 			//Set output type
-			$query['wt'] = SOLR_WRITER_TYPE;
+			$query['wt'] = SOURCE_SOLR_WRITER_TYPE;
 
 			//Set URL
-			$url = SOLR_HOST . SOLR_PATH . SOLR_CORE . 'select?' . http_build_query($query);
+			$url = SOURCE_SOLR_HOST . ':' . SOURCE_SOLR_PORT . SOURCE_SOLR_PATH . SOURCE_SOLR_CORE . 'select?' . http_build_query($query);
 
 			curl_setopt($ch, CURLOPT_URL, $url);
 			
@@ -81,15 +154,32 @@
 	     *  @return array $response - solr response array
 	     *  @throws none
 	     */
-		public static function post($data) {
+		public static function post($data, $doc_cnt) {
 			$ch = self::init_curl();	/* Initialize curl */
-			
+
 			//Set update URL
-			$url = SOLR_HOST . SOLR_PATH . SOLR_CORE . 'update/json';
+			if(TARGET_SOLR_VERSION > 1.4) {
+				$url = TARGET_SOLR_HOST . ':' . TARGET_SOLR_PORT . TARGET_SOLR_PATH . TARGET_SOLR_CORE . 'update/json';
+			} else {
+				$url = TARGET_SOLR_HOST . ':' . TARGET_SOLR_PORT . TARGET_SOLR_PATH . TARGET_SOLR_CORE . 'update';
+			}
 			curl_setopt($ch, CURLOPT_URL, $url);
 			
 			//Configure curl for post
-			curl_setopt($ch,CURLOPT_POSTFIELDS, json_encode($data));
+			if(TARGET_SOLR_VERSION > 1.4) {
+				$data_post = json_encode($data);
+			} else {
+				$xml = new SimpleXMLElement('<add/>');
+				//print_r($data);
+
+				self::array_to_xml($data, $xml);
+				$data_post = $xml->asXML();
+			
+				//print ("=======$doc_cnt\n");
+				//file_put_contents("log/doc-$doc_cnt.xml", $p);
+			}
+			curl_setopt($ch,CURLOPT_POSTFIELDS, $data_post);
+
 			
 			curl_setopt($ch,CURLOPT_POST,true);
 			
@@ -98,8 +188,9 @@
 			));
 			
 			//Execute post
-			$solr_response = simplexml_load_string(curl_exec($ch));
-						
+			$resp=curl_exec($ch);
+			//print("resp = $resp\n");
+			$solr_response = simplexml_load_string($resp);
 			return (int) $solr_response->lst->int[0];
 		}
 
@@ -113,14 +204,16 @@
 		public static function commit() {
 			$ch = self::init_curl();	/* Initialize curl */
 
-			$url = SOLR_HOST . SOLR_PATH . SOLR_CORE . 'update?commit=true';
+			$url = TARGET_SOLR_HOST . ':' . TARGET_SOLR_PORT . TARGET_SOLR_PATH . TARGET_SOLR_CORE . 'update?commit=true';
 			curl_setopt($ch, CURLOPT_URL, $url);
-			
-			curl_setopt($ch,CURLOPT_POST,true);
+			//curl_setopt($ch,CURLOPT_POST,true);
 			
 			//Execute post
-			$solr_response = simplexml_load_string(curl_exec($ch));
-						
+			$resp = curl_exec($ch);
+			$solr_response = simplexml_load_string($resp);
+			if(!$solr_response){
+				return false;
+			}
 			return (int) $solr_response->lst->int[0];
 		}
 		
@@ -132,10 +225,19 @@
 	     *  @throws none
 	     */
 		public static function optimize() {
-			$ch = init_curl();	/* Initialize curl */
+			$ch = self::init_curl();	/* Initialize curl */
 
-			$url = SOLR_HOST . SOLR_PATH . SOLR_CORE . '?optimize=true';
+			$url = TARGET_SOLR_HOST . ':' . TARGET_SOLR_PORT . TARGET_SOLR_PATH . TARGET_SOLR_CORE . 'update?optimize=true';
 			curl_setopt($ch, CURLOPT_URL, $url);
+			//curl_setopt($ch,CURLOPT_POST,true);
+				
+			//Execute post
+			$resp = curl_exec($ch);
+			$solr_response = simplexml_load_string($resp);
+			if(!$solr_response){
+				return false;
+			}
+			return (int) $solr_response->lst->int[0];
 		}
 		
 		/**
@@ -146,7 +248,7 @@
 	     *  @throws Exception - unsupported output format
 	     */
 		public static function transform($data) {
-			switch(SOLR_WRITER_TYPE) {
+			switch(SOURCE_SOLR_WRITER_TYPE) {
 				case 'json':
 					return json_decode($data,true);
 				default:
@@ -182,7 +284,7 @@
 			curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
 
 			//Set connectivity port
-			curl_setopt($ch, CURLOPT_PORT, SOLR_PORT);
+			//curl_setopt($ch, CURLOPT_PORT, SOLR_PORT);
 
 			return $ch;
 		}
@@ -197,6 +299,8 @@
 	$page_cnt=0;
 	$total_docs=0;
 	
+	$response = Solr::optimize();
+	
 	while(($data = Solr::get($params)) !== false) {
 		$total_docs = $data['response']['numFound'];
 		$page_cnt++;
@@ -205,7 +309,7 @@
 		$solr_array = array();
 		
 		//If Solr is 3.2 or higher add the 'add' => 'doc' wrapper
-		if(SOLR_VERSION >= 3.2) {
+		if(TARGET_SOLR_VERSION >= 3.2) {
 			$solr_array = array('add' => array('doc' => array()));
 		}
 		
@@ -231,13 +335,16 @@
 				}
 			}
 						
-			//Append data to solr array			
-			if(SOLR_VERSION >= 3.2) {
-				$solr_array['add']['doc'][] = $doc;
+			//Append data to solr array	
+			if(TARGET_SOLR_VERSION == 1.4) {
+				$solr_array[] = array('doc' => $doc);
 			} else {
-				$solr_array[] = array('add' => array('doc' => $doc));
-			}
-			
+				if(TARGET_SOLR_VERSION >= 3.2) {
+					$solr_array['add']['doc'][] = $doc;
+				} else {
+					$solr_array[] = array('add' => array('doc' => $doc));
+				}
+			}		
 			
 			//Stop if we reached the end of the index
 			if($end_of_index === true) {
@@ -248,7 +355,7 @@
 		} //foreach docs
 		
 		//Post page of data
-		$response = Solr::post($solr_array);
+		$response = Solr::post($solr_array, $doc_cnt);
 		if($response !== 0) {
 			echo "Error processing document ID: " . $doc['id'] . "\.  Response: $response.\n";
 		}
@@ -266,6 +373,10 @@
 		
 		//Increment
 		$params['start'] += PAGINATE_ROWS;
+	}
+	
+	if (OPTIMIZE_FINAL && $page_cnt>0) {
+		$response = Solr::optimize();
 	}
 
 /*
