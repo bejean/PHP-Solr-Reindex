@@ -58,6 +58,8 @@
 		'referencetriable' => 'ignore',
 		'titretriable' => 'ignore'
 	);
+	
+	
 		
 	/**********************************************************/
 	// Class definitions - edit at your own risk
@@ -79,7 +81,26 @@
 		}
 
 		/**
-	     *  function defination to convert array to xml
+		 *  function definition to compute the document boost
+		 *
+		 *  @param array $values - associative array (key/value)
+		 *  @return string $boost - custom boost value (default '')
+		 *  @throws none
+		 */
+		public static function compute_boost($value) {
+			//return '';
+			if ($value['groupesource'] == 'Magnolia-WEBSITE') {
+				$boost = '4';
+				if (strlen($value['corps'][0])>700) {
+					$boost = '8';
+				}
+			}
+			return $boost;
+		}
+		
+		
+		/**
+	     *  function definition to convert array to xml
 	     * 
 	     *  @param array $array - associative array (key/value) 
 	     *  @param $xml - the xml documlent to build
@@ -91,8 +112,18 @@
     		foreach($array as $key => $value) {
         		if(is_array($value)) {
             		if(!is_numeric($key)){
+            			$boost = '';
+            			if ($key=='doc_elt') {
+            				$key = 'doc';
+            				$value = $value['doc'];
+            				$boost = self::compute_boost($value);
+            			}
 						if ($key=='doc') {
 							$subnode = $xml->addChild("$key");
+							if (!empty($boost)) {
+								$subnode->addAttribute("boost", $boost);
+							}
+							$str=$subnode->asXML();
 							self::array_to_xml($value, $subnode);
 						} else {
 							self::array_to_xml($value, $xml, $key);
@@ -176,7 +207,7 @@
 				$data_post = $xml->asXML();
 			
 				//print ("=======$doc_cnt\n");
-				//file_put_contents("log/doc-$doc_cnt.xml", $p);
+				//file_put_contents("log/doc-$doc_cnt.xml", $data_post);
 			}
 			curl_setopt($ch,CURLOPT_POSTFIELDS, $data_post);
 
@@ -298,9 +329,7 @@
 	$doc_cnt=$params['start'];
 	$page_cnt=0;
 	$total_docs=0;
-	
-	$response = Solr::optimize();
-	
+		
 	while(($data = Solr::get($params)) !== false) {
 		$total_docs = $data['response']['numFound'];
 		$page_cnt++;
@@ -337,7 +366,8 @@
 						
 			//Append data to solr array	
 			if(TARGET_SOLR_VERSION == 1.4) {
-				$solr_array[] = array('doc' => $doc);
+				$doc_elt = array('doc' => $doc, 'boost' => '0');
+				$solr_array[] = array('doc_elt' => $doc_elt);
 			} else {
 				if(TARGET_SOLR_VERSION >= 3.2) {
 					$solr_array['add']['doc'][] = $doc;
