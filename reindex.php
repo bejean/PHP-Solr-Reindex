@@ -4,35 +4,31 @@
 // 	define('SOURCE_SOLR_PORT','8983');						/* Port */
 // 	define('SOURCE_SOLR_PATH','/solr/');					/* Default Solr path (usually /solr/) */
 // 	define('SOURCE_SOLR_CORE','my_core/');					/* Core */
-// 	define('SOURCE_SOLR_VERSION', '3.1');					/* Define Solr version. 3.2 and higher allow more optimized JSON formatting. */
 // 	define('SOURCE_SOLR_WRITER_TYPE','json');				/* Writer Type - output type.  Currently only 'json' is supported. */
 	
 // 	define('TARGET_SOLR_HOST','http://172.16.199.128');		/* Hostname */
 // 	define('TARGET_SOLR_PORT','8983');						/* Port */
 // 	define('TARGET_SOLR_PATH','/solr/');					/* Default Solr path (usually /solr/) */
-// 	define('TARGET_SOLR_CORE','my_core/');					/* Core */
-// 	define('TARGET_SOLR_VERSION', '3.1');					/* Define Solr version. 3.2 and higher allow more optimized JSON formatting. */
-		
+// 	define('TARGET_SOLR_CORE','my_core/');					/* Core */		
 	
 	/* Solr source connectivity */
 	define('SOURCE_SOLR_HOST','http://172.16.98.142');		/* Hostname */
 	define('SOURCE_SOLR_PORT','8080');						/* Port */
-	define('SOURCE_SOLR_PATH','/apache-solr-1.4.1/');		/* Default Solr path (usually /solr/) */
+	define('SOURCE_SOLR_PATH','/solr14/');		/* Default Solr path (usually /solr/) */
 	define('SOURCE_SOLR_CORE','inrs/');						/* Core */
-	define('SOURCE_SOLR_VERSION', '1.4');					/* Define Solr version.  3.2 and higher allow more optimized JSON formatting. */
 	define('SOURCE_SOLR_WRITER_TYPE','json');				/* Writer Type - output type.  Currently only 'json' is supported. */
 	
 	/* Solr target connectivity */
 	define('TARGET_SOLR_HOST','http://172.16.98.142');		/* Hostname */
 	define('TARGET_SOLR_PORT','8080');						/* Port */
-	define('TARGET_SOLR_PATH','/apache-solr-1.4.1/');		/* Default Solr path (usually /solr/) */
+	//define('TARGET_SOLR_PATH','/solr14/');				/* Default Solr path (usually /solr/) */
+	//define('TARGET_SOLR_CORE','tests2/');					/* Core */
+	define('TARGET_SOLR_PATH','/solr47/');					/* Default Solr path (usually /solr/) */
 	define('TARGET_SOLR_CORE','tests/');					/* Core */
-	define('TARGET_SOLR_VERSION', '1.4');
-	
 	
 	/* Performance Options */
-	define('PAGINATE_ROWS',10);								/* Number of docs to show per page */
-	define('COMMIT_FREQUENCY',10);							/* How many pages to commit after. */
+	define('PAGINATE_ROWS',1);								/* Number of docs to show per page */
+	define('COMMIT_PAGE_FREQUENCY',100);					/* How many pages to commit after. */
 	define('CURL_TIMEOUT',60);								/* How long until curl request times out.  Set to 0 for unlimited. */
 	define('OPTIMIZE_FINAL',true);							/* Perform an optimize at the end */
 	
@@ -91,7 +87,11 @@
 			//return '';
 			if ($value['groupesource'] == 'Magnolia-WEBSITE') {
 				$boost = '4';
-				if (strlen($value['corps'][0])>700) {
+				$volumeRedactionnel = 0;
+				if (!empty($value['chapo'][0])) $volumeRedactionnel += strlen($value['chapo'][0]);
+				if (!empty($value['accroche'][0])) $volumeRedactionnel += strlen($value['accroche'][0]);
+				if (!empty($value['keywords'][0])) $volumeRedactionnel += strlen($value['keywords'][0]);
+				if ($volumeRedactionnel>700) {
 					$boost = '8';
 				}
 			}
@@ -189,33 +189,24 @@
 			$ch = self::init_curl();	/* Initialize curl */
 
 			//Set update URL
-			if(TARGET_SOLR_VERSION > 1.4) {
-				$url = TARGET_SOLR_HOST . ':' . TARGET_SOLR_PORT . TARGET_SOLR_PATH . TARGET_SOLR_CORE . 'update/json';
-			} else {
-				$url = TARGET_SOLR_HOST . ':' . TARGET_SOLR_PORT . TARGET_SOLR_PATH . TARGET_SOLR_CORE . 'update';
-			}
+			$url = TARGET_SOLR_HOST . ':' . TARGET_SOLR_PORT . TARGET_SOLR_PATH . TARGET_SOLR_CORE . 'update';
 			curl_setopt($ch, CURLOPT_URL, $url);
 			
 			//Configure curl for post
-			if(TARGET_SOLR_VERSION > 1.4) {
-				$data_post = json_encode($data);
-			} else {
-				$xml = new SimpleXMLElement('<add/>');
-				//print_r($data);
-
-				self::array_to_xml($data, $xml);
-				$data_post = $xml->asXML();
-			
-				//print ("=======$doc_cnt\n");
-				//file_put_contents("log/doc-$doc_cnt.xml", $data_post);
-			}
+			$xml = new SimpleXMLElement('<add/>');
+			//print_r($data);
+			self::array_to_xml($data, $xml);
+			$data_post = $xml->asXML();		
+				
+			//print ("=======$doc_cnt\n");
+			//file_put_contents("log/doc-$doc_cnt.xml", $data_post);
+					
 			curl_setopt($ch,CURLOPT_POSTFIELDS, $data_post);
 
-			
 			curl_setopt($ch,CURLOPT_POST,true);
 			
 			curl_setopt($ch,CURLOPT_HTTPHEADER, array(
-				'Content-Type: application/json'
+				'Content-Type: application/xml'
 			));
 			
 			//Execute post
@@ -337,18 +328,16 @@
 		//Initialize solr wrapper
 		$solr_array = array();
 		
-		//If Solr is 3.2 or higher add the 'add' => 'doc' wrapper
-		if(TARGET_SOLR_VERSION >= 3.2) {
-			$solr_array = array('add' => array('doc' => array()));
-		}
-		
 		//Loop through returned documents
 		foreach($data['response']['docs'] as $doc) {
 			//Increment document count
 			$doc_cnt++;
 						
 			//See if ENDINDEX has been reached
-			$end_of_index = (ENDINDEX > 0 && $doc_cnt == ENDINDEX);
+			if (ENDINDEX > 0)
+				$end_of_index = ($doc_cnt == ENDINDEX);
+			else
+				$end_of_index = ($doc_cnt == $total_docs);
 			
 			//Remove un-wanted fields
 			foreach($ignore_fields as $i_field=>$operation) {
@@ -365,16 +354,8 @@
 			}
 						
 			//Append data to solr array	
-			if(TARGET_SOLR_VERSION == 1.4) {
-				$doc_elt = array('doc' => $doc, 'boost' => '0');
-				$solr_array[] = array('doc_elt' => $doc_elt);
-			} else {
-				if(TARGET_SOLR_VERSION >= 3.2) {
-					$solr_array['add']['doc'][] = $doc;
-				} else {
-					$solr_array[] = array('add' => array('doc' => $doc));
-				}
-			}		
+			$doc_elt = array('doc' => $doc, 'boost' => '0');
+			$solr_array[] = array('doc_elt' => $doc_elt);
 			
 			//Stop if we reached the end of the index
 			if($end_of_index === true) {
@@ -391,9 +372,8 @@
 		}
 		
 		//Commit page(s) of data
-		if($page_cnt % COMMIT_FREQUENCY == 0 || $end_of_index) {
+		if($page_cnt % COMMIT_PAGE_FREQUENCY == 0 || $end_of_index) {
 			$response = Solr::commit();
-			
 			if($response !== 0) {
 				echo "Error committing data to Solr!  Response: $response.\n";
 			} else {
