@@ -11,24 +11,35 @@
 // 	define('TARGET_SOLR_PATH','/solr/');					/* Default Solr path (usually /solr/) */
 // 	define('TARGET_SOLR_CORE','my_core/');					/* Core */		
 	
+// 	/* Solr source connectivity */
+// 	define('SOURCE_SOLR_HOST','http://inrs');				/* Hostname */
+// 	define('SOURCE_SOLR_PORT','8080');						/* Port */
+// 	define('SOURCE_SOLR_PATH','/solr14/');					/* Default Solr path (usually /solr/) */
+// 	define('SOURCE_SOLR_CORE','inrs/');						/* Core */
+// 	define('SOURCE_SOLR_WRITER_TYPE','json');				/* Writer Type - output type.  Currently only 'json' is supported. */
+	
+// 	/* Solr target connectivity */
+// 	define('TARGET_SOLR_HOST','http://inrs');				/* Hostname */
+// 	define('TARGET_SOLR_PORT','8080');						/* Port */
+// 	define('TARGET_SOLR_PATH','/solr14/');					/* Default Solr path (usually /solr/) */
+// 	define('TARGET_SOLR_CORE','tests2/');					/* Core */
+
 	/* Solr source connectivity */
-	define('SOURCE_SOLR_HOST','http://172.16.98.142');		/* Hostname */
+	define('SOURCE_SOLR_HOST','http://localhost');				/* Hostname */
 	define('SOURCE_SOLR_PORT','8080');						/* Port */
-	define('SOURCE_SOLR_PATH','/solr14/');		/* Default Solr path (usually /solr/) */
-	define('SOURCE_SOLR_CORE','inrs/');						/* Core */
+	define('SOURCE_SOLR_PATH','/solr/');					/* Default Solr path (usually /solr/) */
+	define('SOURCE_SOLR_CORE','core_mo_1/');						/* Core */
 	define('SOURCE_SOLR_WRITER_TYPE','json');				/* Writer Type - output type.  Currently only 'json' is supported. */
 	
 	/* Solr target connectivity */
-	define('TARGET_SOLR_HOST','http://172.16.98.142');		/* Hostname */
+	define('TARGET_SOLR_HOST','http://localhost');				/* Hostname */
 	define('TARGET_SOLR_PORT','8080');						/* Port */
-	//define('TARGET_SOLR_PATH','/solr14/');				/* Default Solr path (usually /solr/) */
-	//define('TARGET_SOLR_CORE','tests2/');					/* Core */
-	define('TARGET_SOLR_PATH','/solr47/');					/* Default Solr path (usually /solr/) */
-	define('TARGET_SOLR_CORE','tests/');					/* Core */
-	
+	define('TARGET_SOLR_PATH','/solr/');					/* Default Solr path (usually /solr/) */
+	define('TARGET_SOLR_CORE','core_mo_1_test/');						/* Core */
+		
 	/* Performance Options */
 	define('PAGINATE_ROWS',1);								/* Number of docs to show per page */
-	define('COMMIT_PAGE_FREQUENCY',100);					/* How many pages to commit after. */
+	define('COMMIT_PAGE_FREQUENCY',137);					/* How many pages to commit after. */
 	define('CURL_TIMEOUT',60);								/* How long until curl request times out.  Set to 0 for unlimited. */
 	define('OPTIMIZE_FINAL',true);							/* Perform an optimize at the end */
 	
@@ -51,8 +62,9 @@
 			ignore - does not re-post this fields data	
 	*/
 	$ignore_fields = array(
-		'referencetriable' => 'ignore',
-		'titretriable' => 'ignore'
+		'_version_' => 'ignore',
+		//'referencetriable' => 'ignore',
+		//'titretriable' => 'ignore'
 	);
 	
 	
